@@ -80,9 +80,17 @@ module MiniRacer
       @timeout = nil
       @current_exception = nil
 
+      snapshot = nil
       if options
         @timeout = options[:timeout]
+        snapshot = options[:snapshot]
       end
+
+      if snapshot && !snapshot.is_a?(Snapshot)
+        raise ArgumentError, 'Snapshot must be MiniRacer::Snapshot objects'
+      end
+
+      init_with_snapshot(snapshot)
     end
 
     def load(filename)
@@ -106,4 +114,9 @@ module MiniRacer
 
   end
 
+  class Snapshot
+    def initialize(str)
+      load(str)
+    end
+  end
 end

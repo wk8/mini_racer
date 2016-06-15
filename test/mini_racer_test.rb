@@ -287,4 +287,11 @@ raise FooError, "I like foos"
     end
   end
 
+  def test_it_can_use_snapshots
+    snapshot = MiniRacer::Snapshot.new('function hello() { return "world"; }')
+
+    context = MiniRacer::Context.new(snapshot: snapshot)
+
+    assert_equal "world", context.eval("hello()")
+  end
 end
