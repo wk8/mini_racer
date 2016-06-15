@@ -294,4 +294,10 @@ raise FooError, "I like foos"
 
     assert_equal "world", context.eval("hello()")
   end
+
+  def test_it_can_eval_promises
+    context = MiniRacer::Context.new
+
+    
+  end
 end
