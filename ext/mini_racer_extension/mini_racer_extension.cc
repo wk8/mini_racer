@@ -419,17 +419,19 @@ static VALUE rb_context_init_with_snapshot(VALUE self, VALUE snapshot) {
     Isolate::CreateParams create_params;
     create_params.array_buffer_allocator = context_info->allocator;
 
-    // if (!NIL_P(snapshot)) {
-        // SnapshotInfo* snapshot_info;
-        // Data_Get_Struct(snapshot, SnapshotInfo, snapshot_info);
+    StartupData startup_data;
+    if (!NIL_P(snapshot)) {
+        SnapshotInfo* snapshot_info;
+        Data_Get_Struct(snapshot, SnapshotInfo, snapshot_info);
 
-        // StartupData startup_data = {snapshot_info->data, snapshot_info->raw_size};
-        StartupData startup_data = V8::CreateSnapshotDataBlob("function hello() { return 'world'; }; var foo = 'bar2';");
+        startup_data = {snapshot_info->data, snapshot_info->raw_size};
+        // startup_data = V8::CreateSnapshotDataBlob("function hello() { return 'world'; }; var foo = 'bar2';");
         
         WK_DEBUG("bordel data: %d et size %d", startup_data.data, startup_data.raw_size);
         
         create_params.snapshot_blob = &startup_data;
-    // }
+    }
+    WK_DEBUG("bordel data: %d et size %d", startup_data.data, startup_data.raw_size);
 
     context_info->isolate = Isolate::New(create_params);
 
