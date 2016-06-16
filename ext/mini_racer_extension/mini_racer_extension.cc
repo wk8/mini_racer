@@ -1,3 +1,43 @@
+#define WK_DEBUG_MODE 1
+
+#ifndef WK_DEBUG_MODE_LOADED
+#define WK_DEBUG_MODE_LOADED
+
+#if WK_DEBUG_MODE
+
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <sys/time.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <string.h>
+#define WK_DEBUG_LOG_FILE "/tmp/wk_debug.log"
+
+void wk_debug(const char *format, ...)
+{
+	FILE *f ;
+	va_list args;
+	struct timeval tv;
+	f = fopen(WK_DEBUG_LOG_FILE, "a+");
+	gettimeofday(&tv, NULL);
+	fprintf(f, "[ %lu-%lu (%d) ] ", (unsigned long)tv.tv_sec, (unsigned long)tv.tv_usec, (int) getpid());
+	va_start(args, format);
+	vfprintf(f, format, args);
+	fprintf(f, "\n");
+	va_end(args);
+	fclose(f);
+}
+
+#define WK_DEBUG(format, ...) wk_debug(format, ##__VA_ARGS__)
+
+#else
+#define WK_DEBUG(format, ...)
+#endif
+#endif
+
+
+
 #include <stdio.h>
 #include <ruby.h>
 #include <ruby/thread.h>
@@ -64,6 +104,55 @@ static void init_v8() {
 	V8::Initialize();
     }
 }
+
+int wkpo_test() {
+  // Initialize V8.
+  // V8::InitializeICU();
+  // V8::InitializeExternalStartupData(argv[0]);
+  // Platform* platform = platform::CreateDefaultPlatform();
+  // V8::InitializePlatform(platform);
+  // V8::Initialize();
+    
+    init_v8();
+
+  StartupData startup_data = V8::CreateSnapshotDataBlob("function hello() { return 'world'; }; var foo = 'bar';");
+
+  // Create a new Isolate and make it the current one.
+  ArrayBufferAllocator allocator;
+  Isolate::CreateParams create_params;
+  create_params.array_buffer_allocator = &allocator;
+  create_params.snapshot_blob = &startup_data;
+
+  Isolate* isolate = Isolate::New(create_params);
+  {
+    Isolate::Scope isolate_scope(isolate);
+
+    // Create a stack-allocated handle scope.
+    HandleScope handle_scope(isolate);
+
+    // Create a new context.
+    Local<Context> context = Context::New(isolate);
+
+    // Enter the context for compiling and running the hello world script.
+    Context::Scope context_scope(context);
+
+    // Create a string containing the JavaScript source code.
+    Local<String> source =
+        String::NewFromUtf8(isolate, "hello()",
+                            NewStringType::kNormal).ToLocalChecked();
+
+    // Compile the source code.
+    Local<Script> script = Script::Compile(context, source).ToLocalChecked();
+
+    // Run the script to get the result.
+    Local<Value> result = script->Run(context).ToLocalChecked();
+
+    // Convert the result to an UTF8 string and print it.
+    String::Utf8Value utf8(result);
+    WK_DEBUG("result de main %s", *utf8);
+  }
+}
+
 
 void* breaker(void *d) {
   EvalParams* data = (EvalParams*)d;
@@ -330,24 +419,46 @@ static VALUE rb_context_init_with_snapshot(VALUE self, VALUE snapshot) {
     Isolate::CreateParams create_params;
     create_params.array_buffer_allocator = context_info->allocator;
 
-    if (!NIL_P(snapshot)) {
-        SnapshotInfo* snapshot_info;
-        Data_Get_Struct(snapshot, SnapshotInfo, snapshot_info);
+    // if (!NIL_P(snapshot)) {
+        // SnapshotInfo* snapshot_info;
+        // Data_Get_Struct(snapshot, SnapshotInfo, snapshot_info);
 
-        StartupData startup_data = {snapshot_info->data, snapshot_info->raw_size};
+        // StartupData startup_data = {snapshot_info->data, snapshot_info->raw_size};
+        StartupData startup_data = V8::CreateSnapshotDataBlob("function hello() { return 'world'; }; var foo = 'bar2';");
+        
+        WK_DEBUG("bordel data: %d et size %d", startup_data.data, startup_data.raw_size);
+        
         create_params.snapshot_blob = &startup_data;
-    }
+    // }
 
     context_info->isolate = Isolate::New(create_params);
+
+    // wkpo
+    Isolate* isolate = Isolate::New(create_params);
+    {
+        Locker lock(isolate);
+        Isolate::Scope isolate_scope(isolate);
+        HandleScope handle_scope(isolate);
+        Local<Context> context = Context::New(isolate);
+    Context::Scope context_scope(context);
+    Local<String> source =
+        String::NewFromUtf8(isolate, "hello()",
+                            NewStringType::kNormal).ToLocalChecked();
+    Local<Script> script = Script::Compile(context, source).ToLocalChecked();
+    Local<Value> result = script->Run(context).ToLocalChecked();
+    String::Utf8Value utf8(result);
+    WK_DEBUG("bordel juste apres creation: %s", *utf8);
+    Unlocker unlocker(isolate);
+}
 
     Locker lock(context_info->isolate);
     Isolate::Scope isolate_scope(context_info->isolate);
     HandleScope handle_scope(context_info->isolate);
 
-    Local<Context> context = Context::New(context_info->isolate);
+    Local<Context> context2 = Context::New(context_info->isolate);
 
     context_info->context = new Persistent<Context>();
-    context_info->context->Reset(context_info->isolate, context);
+    context_info->context->Reset(context_info->isolate, context2);
 
     if (Qnil == rb_cDateTime && rb_funcall(rb_cObject, rb_intern("const_defined?"), 1, rb_str_new2("DateTime")) == Qtrue)
     {
@@ -667,6 +778,8 @@ VALUE allocate_snapshot(VALUE klass) {
     SnapshotInfo* snapshot_info = ALLOC(SnapshotInfo);
     snapshot_info->data = NULL;
     snapshot_info->raw_size = 0;
+
+    wkpo_test();
 
     return Data_Wrap_Struct(klass, NULL, deallocate_snapshot, (void*)snapshot_info);
 }
