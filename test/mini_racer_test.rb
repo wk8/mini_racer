@@ -295,4 +295,9 @@ raise FooError, "I like foos"
     assert_equal "world", context.eval("hello()")
     assert_equal "bar", context.eval("foo")
   end
+
+  # TODO wkpo
+  def test_buggy_snapshots_throw_an_exception
+    
+  end
 end
