@@ -120,5 +120,7 @@ module MiniRacer
       # defined in the C class
       load(str)
     end
+
+    # TODO wkpo size helper
   end
 end
