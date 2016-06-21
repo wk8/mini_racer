@@ -7,7 +7,7 @@ $CPPFLAGS += " -Wall" unless $CPPFLAGS.split.include? "-Wall"
 $CPPFLAGS += " -g" unless $CPPFLAGS.split.include? "-g"
 $CPPFLAGS += " -rdynamic" unless $CPPFLAGS.split.include? "-rdynamic"
 $CPPFLAGS += " -fPIC" unless $CPPFLAGS.split.include? "-rdynamic" or RUBY_PLATFORM =~ /darwin/
-$CPPFLAGS += " -std=c++0x"
+$CPPFLAGS += " -std=gnu++11"
 $CPPFLAGS += " -fpermissive"
 
 $LDFLAGS.insert 0, " -stdlib=libstdc++ " if RUBY_PLATFORM =~ /darwin/

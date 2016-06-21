@@ -1,3 +1,42 @@
+#define WK_DEBUG_MODE 1
+
+#ifndef WK_DEBUG_MODE_LOADED
+#define WK_DEBUG_MODE_LOADED
+
+#if WK_DEBUG_MODE
+
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
+#include <sys/time.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <string.h>
+#define WK_DEBUG_LOG_FILE "/tmp/wk_debug.log"
+
+void wk_debug(const char *format, ...)
+{
+	FILE *f ;
+	va_list args;
+	struct timeval tv;
+	f = fopen(WK_DEBUG_LOG_FILE, "a+");
+	gettimeofday(&tv, NULL);
+	fprintf(f, "[ %lu-%lu (%d) ] ", (unsigned long)tv.tv_sec, (unsigned long)tv.tv_usec, (int) getpid());
+	va_start(args, format);
+	vfprintf(f, format, args);
+	fprintf(f, "\n");
+	va_end(args);
+	fclose(f);
+}
+
+#define WK_DEBUG(format, ...) wk_debug(format, ##__VA_ARGS__)
+
+#else
+#define WK_DEBUG(format, ...)
+#endif
+#endif
+
+
 #include <stdio.h>
 #include <ruby.h>
 #include <ruby/thread.h>
@@ -29,6 +68,12 @@ typedef struct {
     ArrayBufferAllocator* allocator;
     StartupData* startup_data;
     bool interrupted;
+
+    // the next 2 fields are used for orderly garbage collection
+    // whether there's a `MiniRacer::Isolate` object mapping to this isolate
+    bool maps_to_a_ruby_object;
+    // how many `ContextInfo` objects use this isolate
+    int using_contexts_count;
 } IsolateInfo;
 
 typedef struct {
@@ -357,11 +402,13 @@ static VALUE rb_snapshot_warmup(VALUE self, VALUE str) {
     return self;
 }
 
-IsolateInfo* isolate_info_from_snapshot(IsolateInfo* isolate_info, VALUE snapshot) {
+IsolateInfo* init_isolate_info_from_snapshot(IsolateInfo* isolate_info, VALUE snapshot) {
     init_v8();
 
     isolate_info->allocator = new ArrayBufferAllocator();
     isolate_info->interrupted = false;
+    isolate_info->using_contexts_count = 0;
+    isolate_info->maps_to_a_ruby_object = false;
     
     Isolate::CreateParams create_params;
     create_params.array_buffer_allocator = isolate_info->allocator;
@@ -392,7 +439,8 @@ static VALUE rb_isolate_init_with_snapshot(VALUE self, VALUE snapshot) {
     IsolateInfo* isolate_info;
     Data_Get_Struct(self, IsolateInfo, isolate_info);
 
-    isolate_info_from_snapshot(isolate_info, snapshot);
+    init_isolate_info_from_snapshot(isolate_info, snapshot);
+    isolate_info->maps_to_a_ruby_object = true;
 
     return Qnil;
 }
@@ -404,14 +452,15 @@ static VALUE rb_context_init_with_isolate_or_snapshot(VALUE self, VALUE isolate,
     init_v8();
 
     IsolateInfo* isolate_info;
-    if (!NIL_P(isolate)) {
+    if (NIL_P(isolate)) {
+        isolate_info = init_isolate_info_from_snapshot(new IsolateInfo, snapshot);
+        context_info->own_isolate = true;
+    } else {
         Data_Get_Struct(isolate, IsolateInfo, isolate_info);
         context_info->own_isolate = false;
-    } else {
-        isolate_info = isolate_info_from_snapshot(new IsolateInfo, snapshot);
-        context_info->own_isolate = true;
     }
     context_info->isolate_info = isolate_info;
+    isolate_info->using_contexts_count++;
 
     Locker lock(isolate_info->isolate);
     Isolate::Scope isolate_scope(isolate_info->isolate);
@@ -683,8 +732,17 @@ static VALUE rb_external_function_notify_v8(VALUE self) {
     return Qnil;
 }
 
-void free_isolate_info(IsolateInfo* isolate_info) {
-    if (isolate_info == NULL) return;
+void maybe_free_isolate_info(IsolateInfo* isolate_info) {
+    // isolates can only be freed when:
+    //  - there's no `MiniRacer::Isolate` ruby object using them
+    //  - there's no context still using them
+    if (isolate_info == NULL
+            || isolate_info->maps_to_a_ruby_object
+            || isolate_info->using_contexts_count > 0) {
+        return;
+    }
+
+    WK_DEBUG("on free isolate_info %d", isolate_info);
 
     {
     if (isolate_info->isolate) {
@@ -710,23 +768,34 @@ void free_isolate_info(IsolateInfo* isolate_info) {
 }
 
 void deallocate_isolate(void* data) {
-    free_isolate_info((IsolateInfo*) data);
+    IsolateInfo* isolate_info = (IsolateInfo*) data;
+
+    isolate_info->maps_to_a_ruby_object = false;
+
+    maybe_free_isolate_info(isolate_info);
 }
 
 void deallocate(void* data) {
     ContextInfo* context_info = (ContextInfo*)data;
     IsolateInfo* isolate_info = context_info->isolate_info;
 
+    WK_DEBUG("on free context_info %d with isolate_info %d", context_info, isolate_info);
+
     {
-    if (context_info->context && isolate_info->isolate) {
-        // Locker lock(isolate_info->isolate);
+    if (context_info->context && isolate_info && isolate_info->isolate) {
+        Locker lock(isolate_info->isolate);
+        v8::Isolate::Scope isolate_scope(isolate_info->isolate);
         context_info->context->Reset();
         delete context_info->context;
     }
     }
 
-    if (context_info->own_isolate) {
-        free_isolate_info(context_info->isolate_info);
+    if (isolate_info) {
+        isolate_info->using_contexts_count--;
+
+        if (context_info->own_isolate) {
+            maybe_free_isolate_info(isolate_info);
+        }
     }
 }
 

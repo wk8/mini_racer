@@ -98,10 +98,6 @@ module MiniRacer
 
       @timeout = options[:timeout]
 
-      # important to keep a pointer to the isolate, to make sure it
-      # doesn't get GC'ed before the context
-      @isolate = options[:isolate]
-
       # defined in the C class
       init_with_isolate_or_snapshot(options[:isolate], options[:snapshot])
     end
