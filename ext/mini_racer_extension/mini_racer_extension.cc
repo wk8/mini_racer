@@ -20,15 +20,16 @@ class ArrayBufferAllocator : public v8::ArrayBuffer::Allocator {
 };
 
 typedef struct {
-    Isolate* isolate;
-    ArrayBufferAllocator* allocator;
-    bool interrupted;
-} IsolateInfo;
-
-typedef struct {
     const char* data;
     int raw_size;
 } SnapshotInfo;
+
+typedef struct {
+    Isolate* isolate;
+    ArrayBufferAllocator* allocator;
+    StartupData* startup_data;
+    bool interrupted;
+} IsolateInfo;
 
 typedef struct {
     IsolateInfo* isolate_info;
@@ -366,15 +367,23 @@ IsolateInfo* isolate_info_from_snapshot(VALUE snapshot) {
     Isolate::CreateParams create_params;
     create_params.array_buffer_allocator = isolate_info->allocator;
 
-    StartupData startup_data;
+    StartupData* startup_data = NULL;
     if (!NIL_P(snapshot)) {
         SnapshotInfo* snapshot_info;
         Data_Get_Struct(snapshot, SnapshotInfo, snapshot_info);
 
-        startup_data = {snapshot_info->data, snapshot_info->raw_size};
-        create_params.snapshot_blob = &startup_data;
+        int raw_size = snapshot_info->raw_size;
+        char* data = new char[raw_size];
+        memcpy(data, snapshot_info->data, sizeof(char) * raw_size);
+
+        startup_data = new StartupData;
+        startup_data->data = data;
+        startup_data->raw_size = raw_size;
+
+        create_params.snapshot_blob = startup_data;
     }
 
+    isolate_info->startup_data = startup_data;
     isolate_info->isolate = Isolate::New(create_params);
 
     return isolate_info;
@@ -679,6 +688,11 @@ void free_isolate_info(IsolateInfo* isolate_info) {
     } else {
         isolate_info->isolate->Dispose();
     }
+    }
+
+    if (isolate_info->startup_data) {
+        delete[] isolate_info->startup_data->data;
+        free(isolate_info->startup_data);
     }
 
     delete isolate_info->allocator;
