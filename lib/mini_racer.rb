@@ -40,6 +40,14 @@ module MiniRacer
   end
 
   class Isolate
+    def initialize(snapshot = nil)
+      unless snapshot.nil? || snapshot.is_a?(Snapshot)
+        raise ArgumentError, "snapshot must be a Snapshot object, passed a #{snapshot.inspect}"
+      end
+
+      # defined in the C class
+      init_with_snapshot(snapshot)
+    end
   end
 
   # eval is defined in the C class

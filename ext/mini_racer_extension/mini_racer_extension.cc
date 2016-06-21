@@ -357,10 +357,9 @@ static VALUE rb_snapshot_warmup(VALUE self, VALUE str) {
     return Qnil;
 }
 
-IsolateInfo* isolate_info_from_snapshot(VALUE snapshot) {
+IsolateInfo* isolate_info_from_snapshot(IsolateInfo* isolate_info, VALUE snapshot) {
     init_v8();
 
-    IsolateInfo* isolate_info = new IsolateInfo;
     isolate_info->allocator = new ArrayBufferAllocator();
     isolate_info->interrupted = false;
     
@@ -389,6 +388,15 @@ IsolateInfo* isolate_info_from_snapshot(VALUE snapshot) {
     return isolate_info;
 }
 
+static VALUE rb_isolate_init_with_snapshot(VALUE self, VALUE snapshot) {
+    IsolateInfo* isolate_info;
+    Data_Get_Struct(self, IsolateInfo, isolate_info);
+
+    isolate_info_from_snapshot(isolate_info, snapshot);
+
+    return Qnil;
+}
+
 static VALUE rb_context_init_with_isolate_or_snapshot(VALUE self, VALUE isolate, VALUE snapshot) {
     ContextInfo* context_info;
     Data_Get_Struct(self, ContextInfo, context_info);
@@ -400,7 +408,7 @@ static VALUE rb_context_init_with_isolate_or_snapshot(VALUE self, VALUE isolate,
         Data_Get_Struct(isolate, IsolateInfo, isolate_info);
         context_info->own_isolate = false;
     } else {
-        isolate_info = isolate_info_from_snapshot(snapshot);
+        isolate_info = isolate_info_from_snapshot(new IsolateInfo, snapshot);
         context_info->own_isolate = true;
     }
     context_info->isolate_info = isolate_info;
@@ -755,6 +763,17 @@ VALUE allocate_snapshot(VALUE klass) {
     return Data_Wrap_Struct(klass, NULL, deallocate_snapshot, (void*)snapshot_info);
 }
 
+VALUE allocate_isolate(VALUE klass) {
+    IsolateInfo* isolate_info = ALLOC(IsolateInfo);
+
+    isolate_info->isolate = NULL;
+    isolate_info->allocator = NULL;
+    isolate_info->startup_data = NULL;
+    isolate_info->interrupted = false;
+
+    return Data_Wrap_Struct(klass, NULL, deallocate_isolate, (void*)isolate_info);
+}
+
 static VALUE
 rb_context_stop(VALUE self) {
     ContextInfo* context_info;
@@ -770,6 +789,7 @@ extern "C" {
 	VALUE rb_mMiniRacer = rb_define_module("MiniRacer");
 	VALUE rb_cContext = rb_define_class_under(rb_mMiniRacer, "Context", rb_cObject);
 	VALUE rb_cSnapshot = rb_define_class_under(rb_mMiniRacer, "Snapshot", rb_cObject);
+	VALUE rb_cIsolate = rb_define_class_under(rb_mMiniRacer, "Isolate", rb_cObject);
 
 	VALUE rb_eEvalError = rb_define_class_under(rb_mMiniRacer, "EvalError", rb_eStandardError);
 	rb_eScriptTerminatedError = rb_define_class_under(rb_mMiniRacer, "ScriptTerminatedError", rb_eEvalError);
@@ -782,6 +802,7 @@ extern "C" {
 	rb_define_method(rb_cContext, "stop", (VALUE(*)(...))&rb_context_stop, 0);
 	rb_define_alloc_func(rb_cContext, allocate);
 	rb_define_alloc_func(rb_cSnapshot, allocate_snapshot);
+	rb_define_alloc_func(rb_cIsolate, allocate_isolate);
 
 	rb_define_private_method(rb_cContext, "eval_unsafe",(VALUE(*)(...))&rb_context_eval_unsafe, 1);
 	rb_define_private_method(rb_cContext, "init_with_isolate_or_snapshot",(VALUE(*)(...))&rb_context_init_with_isolate_or_snapshot, 2);
@@ -791,6 +812,8 @@ extern "C" {
 	rb_define_method(rb_cSnapshot, "size", (VALUE(*)(...))&rb_snapshot_size, 0);
 	rb_define_method(rb_cSnapshot, "warmup", (VALUE(*)(...))&rb_snapshot_warmup, 1);
 	rb_define_private_method(rb_cSnapshot, "load", (VALUE(*)(...))&rb_snapshot_load, 1);
+
+	rb_define_private_method(rb_cIsolate, "init_with_snapshot",(VALUE(*)(...))&rb_isolate_init_with_snapshot, 1);
     }
 
 }
