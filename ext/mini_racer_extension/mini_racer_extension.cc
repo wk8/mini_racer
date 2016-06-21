@@ -370,7 +370,7 @@ IsolateInfo* init_isolate_info_from_snapshot(IsolateInfo* isolate_info, VALUE sn
     isolate_info->interrupted = false;
     isolate_info->using_contexts_count = 0;
     isolate_info->maps_to_a_ruby_object = false;
-    
+
     Isolate::CreateParams create_params;
     create_params.array_buffer_allocator = isolate_info->allocator;
 
