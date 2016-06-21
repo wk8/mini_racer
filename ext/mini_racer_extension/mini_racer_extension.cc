@@ -354,7 +354,7 @@ static VALUE rb_snapshot_warmup(VALUE self, VALUE str) {
         snapshot_info->raw_size = warm_startup_data.raw_size;
     }
 
-    return Qnil;
+    return self;
 }
 
 IsolateInfo* isolate_info_from_snapshot(IsolateInfo* isolate_info, VALUE snapshot) {
@@ -684,6 +684,8 @@ static VALUE rb_external_function_notify_v8(VALUE self) {
 }
 
 void free_isolate_info(IsolateInfo* isolate_info) {
+    if (isolate_info == NULL) return;
+
     {
     if (isolate_info->isolate) {
 	    Locker lock(isolate_info->isolate);
@@ -713,19 +715,18 @@ void deallocate_isolate(void* data) {
 
 void deallocate(void* data) {
     ContextInfo* context_info = (ContextInfo*)data;
-
     IsolateInfo* isolate_info = context_info->isolate_info;
-    {
-    if (isolate_info && isolate_info->isolate) {
-        Locker lock(isolate_info->isolate);
-        context_info->context->Reset();
-    }
-    }
 
-    delete context_info->context;
+    {
+    if (context_info->context && isolate_info->isolate) {
+        // Locker lock(isolate_info->isolate);
+        context_info->context->Reset();
+        delete context_info->context;
+    }
+    }
 
     if (context_info->own_isolate) {
-        free_isolate_info(isolate_info);
+        free_isolate_info(context_info->isolate_info);
     }
 }
 
@@ -810,7 +811,7 @@ extern "C" {
 	rb_define_alloc_func(rb_cExternalFunction, allocate_external_function);
 
 	rb_define_method(rb_cSnapshot, "size", (VALUE(*)(...))&rb_snapshot_size, 0);
-	rb_define_method(rb_cSnapshot, "warmup", (VALUE(*)(...))&rb_snapshot_warmup, 1);
+	rb_define_method(rb_cSnapshot, "warmup!", (VALUE(*)(...))&rb_snapshot_warmup, 1);
 	rb_define_private_method(rb_cSnapshot, "load", (VALUE(*)(...))&rb_snapshot_load, 1);
 
 	rb_define_private_method(rb_cIsolate, "init_with_snapshot",(VALUE(*)(...))&rb_isolate_init_with_snapshot, 1);
