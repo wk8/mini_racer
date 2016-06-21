@@ -382,23 +382,23 @@ raise FooError, "I like foos"
 
   def test_it_can_re_use_isolates_for_multiple_contexts
     snapshot = MiniRacer::Snapshot.new('Math.sin = 1;')
-    isolate = MiniRacer::Isolate.new # TODO wkpo (snapshot);
+    isolate = MiniRacer::Isolate.new(snapshot);
 
     context1 = MiniRacer::Context.new(isolate: isolate)
-    # assert_equal 1, context1.eval('Math.sin')
-    #
-    # context1.eval('var a = 5;')
+    assert_equal 1, context1.eval('Math.sin')
 
-    # context2 = MiniRacer::Context.new(isolate: isolate)
-    # assert_equal 1, context2.eval('Math.sin')
-    # assert_raises MiniRacer::RuntimeError do
-    #   begin
-    #     context2.eval('a;')
-    #   rescue => e
-    #     assert_equal('ReferenceError: a is not defined', e.message)
-    #     raise
-    #   end
-    # end
+    context1.eval('var a = 5;')
+
+    context2 = MiniRacer::Context.new(isolate: isolate)
+    assert_equal 1, context2.eval('Math.sin')
+    assert_raises MiniRacer::RuntimeError do
+      begin
+        context2.eval('a;')
+      rescue => e
+        assert_equal('ReferenceError: a is not defined', e.message)
+        raise
+      end
+    end
   end
 
   def test_empty_isolate_is_valid_and_can_be_GCed
