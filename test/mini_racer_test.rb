@@ -485,4 +485,13 @@ raise FooError, "I like foos"
     assert_equal 10, equals_after_sleep.size
     assert equals_after_sleep.values.all?
   end
+
+  def test_platform_set_flag_raises_an_exception_if_already_initialized
+    # makes sure it's initialized
+    MiniRacer::Snapshot.new
+
+    assert_raises(MiniRacer::PlatformAlreadyInitialized) do
+      MiniRacer::Platform.set_flag!("--noconcurrent_recompilation")
+    end
+  end
 end
