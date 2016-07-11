@@ -13,4 +13,3 @@ dist: trusty
 sudo: true
 before_install:
   - gem install bundler -v 1.12.0
-cache: bundler
